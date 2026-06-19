@@ -317,7 +317,7 @@ class WorkerExecutor(BaseExecutor):
     async def _poll_postgres() -> str | None:
         """Pick the oldest pending, unclaimed run from Postgres."""
 
-        assistant_id = settings.worker.ASSISTANT_ID
+        assistant_ids = settings.worker.ASSISTANT_IDS
         maker = _get_session_maker()
         async with maker() as session:
             run_id = await session.scalar(
@@ -326,8 +326,8 @@ class WorkerExecutor(BaseExecutor):
                     RunORM.status == "pending",
                     RunORM.claimed_by.is_(None),
                     or_(
-                        assistant_id is None,
-                        RunORM.assistant_id == assistant_id
+                        not assistant_ids,
+                        RunORM.assistant_id.in_(assistant_ids)
                     )
                 )
                 .order_by(RunORM.created_at.asc())
