@@ -320,18 +320,17 @@ class WorkerExecutor(BaseExecutor):
         assistant_ids = settings.worker.ASSISTANT_IDS
         maker = _get_session_maker()
         async with maker() as session:
+            query = select(RunORM.run_id).where(
+                RunORM.status == "pending",
+                RunORM.claimed_by.is_(None),
+            )
+
+            # only add filter if list exists and is not empty
+            if assistant_ids:
+                query = query.where(RunORM.assistant_id.in_(assistant_ids))
+
             run_id = await session.scalar(
-                select(RunORM.run_id)
-                .where(
-                    RunORM.status == "pending",
-                    RunORM.claimed_by.is_(None),
-                    or_(
-                        not assistant_ids,
-                        RunORM.assistant_id.in_(assistant_ids)
-                    )
-                )
-                .order_by(RunORM.created_at.asc())
-                .limit(1)
+                query.order_by(RunORM.created_at.asc()).limit(1)
             )
             return run_id
 
