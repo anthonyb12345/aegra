@@ -97,30 +97,42 @@ class LeaseReaper:
         now = datetime.now(UTC)
         maker = _get_session_maker()
         async with maker() as session:
-            crashed_result = await session.execute(
-                select(RunORM.run_id).where(
-                    RunORM.status == "running",
-                    RunORM.lease_expires_at.isnot(None),
-                    RunORM.lease_expires_at < now,
-                    or_(
-                        not assistant_ids,
-                        RunORM.assistant_id.in_(assistant_ids)
-                    )
+            base_filters_crashed = [
+                RunORM.status == "running",
+                RunORM.lease_expires_at.isnot(None),
+                RunORM.lease_expires_at < now,
+            ]
+
+            if assistant_ids:
+                base_filters_crashed.append(
+                    RunORM.assistant_id.in_(assistant_ids)
                 )
+
+            crashed_result = await session.execute(
+                select(RunORM.run_id).where(*base_filters_crashed)
             )
+
             crashed = [row[0] for row in crashed_result.fetchall()]
 
-            stuck_result = await session.execute(
-                select(RunORM.run_id).where(
-                    RunORM.status == "pending",
-                    RunORM.claimed_by.is_(None),
-                    RunORM.created_at < now - timedelta(seconds=settings.worker.STUCK_PENDING_THRESHOLD_SECONDS),
-                    or_(
-                        not assistant_ids,
-                        RunORM.assistant_id.in_(assistant_ids)
-                    )
+            # ------------------------
+
+            base_filters_stuck = [
+                RunORM.status == "pending",
+                RunORM.claimed_by.is_(None),
+                RunORM.created_at < now - timedelta(
+                    seconds=settings.worker.STUCK_PENDING_THRESHOLD_SECONDS
+                ),
+            ]
+
+            if assistant_ids:
+                base_filters_stuck.append(
+                    RunORM.assistant_id.in_(assistant_ids)
                 )
+
+            stuck_result = await session.execute(
+                select(RunORM.run_id).where(*base_filters_stuck)
             )
+
             stuck_pending = [row[0] for row in stuck_result.fetchall()]
 
         return crashed, stuck_pending
